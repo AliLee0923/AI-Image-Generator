@@ -1,36 +1,61 @@
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
+const STABILITY_API_KEY = process.env.STABILITY_API_KEY!;
+
+export async function POST(req: Request) {
   try {
-    const { prompt, referenceImage } = await request.json()
+    const { prompt, referenceImage } = await req.json();
 
-    if (!prompt) {
-      return NextResponse.json({ error: "Prompt is required" }, { status: 400 })
-    }
+    const generationPrompt = referenceImage
+      ? `${prompt} in the style of the reference image`
+      : prompt;
 
-    // In a real application, you would call an image generation API here
-    // For example, OpenAI's DALL-E API or Stability AI's API
+    const generateImage = async () => {
+      const formData = new FormData(); // <-- IMPORTANT: use Web FormData
+      formData.append("prompt", generationPrompt);
+      formData.append("output_format", "webp");
 
-    // This is a placeholder implementation
-    console.log("Generating images with prompt:", prompt)
-    console.log("Reference image (if any):", referenceImage)
+      const response = await fetch(
+        "https://api.stability.ai/v2beta/stable-image/generate/core",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${STABILITY_API_KEY}`,
+            Accept: "image/*",
+          },
+          body: formData,
+        }
+      );
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 3000))
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("Stability API error:", error);
+        throw new Error(error.errors?.[0] || "Generation failed");
+      }
 
-    // Return placeholder image URLs
-    // In a real app, these would be the URLs of the generated images
-    const images = Array(4)
-      .fill(null)
-      .map((_, i) => ({
-        url: `/placeholder.svg?height=512&width=512&text=Generated+Image+${i + 1}`,
-        alt: `Generated image ${i + 1} for prompt: ${prompt}`,
-      }))
+      const buffer = await response.arrayBuffer();
+      const base64Image = Buffer.from(buffer).toString("base64");
+      return `data:image/webp;base64,${base64Image}`;
+    };
 
-    return NextResponse.json({ images })
+    const generatedImages = await Promise.all([
+      generateImage(),
+      generateImage(),
+      generateImage(),
+      generateImage(),
+    ]);
+
+    const images = generatedImages.map((base64, idx) => ({
+      url: base64,
+      alt: `Generated image ${idx + 1}`,
+    }));
+
+    return NextResponse.json({ images });
   } catch (error) {
-    console.error("Error generating images:", error)
-    return NextResponse.json({ error: "Failed to generate images" }, { status: 500 })
+    console.error("Internal error:", error);
+    return NextResponse.json(
+      { error: "Failed to generate images" },
+      { status: 500 }
+    );
   }
 }
-

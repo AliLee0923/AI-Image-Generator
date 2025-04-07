@@ -1,76 +1,90 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState } from "react"
-import { Download, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
+import type React from "react";
+import { useState } from "react";
+import { Download, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 type ImageData = {
-  url: string
-  alt: string
+  url: string;
+  alt: string;
+};
+
+function SkeletonCard() {
+  return (
+    <Card className="overflow-hidden animate-pulse">
+      <CardContent className="p-2">
+        <div className="w-full aspect-square bg-gray-300 rounded-sm" />
+      </CardContent>
+    </Card>
+  );
 }
 
 export function ImageGenerator() {
-  const [prompt, setPrompt] = useState("")
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [images, setImages] = useState<ImageData[]>([])
-  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
+  const [prompt, setPrompt] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [images, setImages] = useState<ImageData[]>([]);
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(
+    null
+  );
 
   async function generateImages(basePrompt: string, selectedImage?: string) {
-    setIsGenerating(true)
+    setIsGenerating(true);
 
     try {
-      // In a real app, you would call your API route that connects to an image generation API
-      // For this example, we'll simulate the API call with placeholder images
-      const generationPrompt = selectedImage ? `${basePrompt} in the style of the selected image` : basePrompt
+      const generationPrompt = selectedImage
+        ? `${basePrompt} in the style of the selected image`
+        : basePrompt;
 
-      console.log("Generating images with prompt:", generationPrompt)
+      const res = await fetch("/api/generate-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: generationPrompt,
+          referenceImage: selectedImage,
+        }),
+      });
 
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      if (!res.ok) {
+        throw new Error("Failed to generate images");
+      }
 
-      // Generate 4 placeholder images (in a real app, these would come from the API)
-      const newImages = Array(4)
-        .fill(null)
-        .map((_, i) => ({
-          url: `/placeholder.svg?height=512&width=512&text=Generated+Image+${i + 1}`,
-          alt: `Generated image ${i + 1} for prompt: ${basePrompt}`,
-        }))
-
-      setImages(newImages)
-      setSelectedImageIndex(null)
+      const { images } = await res.json();
+      setImages(images);
+      setSelectedImageIndex(null);
     } catch (error) {
-      console.error("Failed to generate images:", error)
+      console.error("Failed to generate images:", error);
     } finally {
-      setIsGenerating(false)
+      setIsGenerating(false);
     }
   }
 
   function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!prompt.trim()) return
+    e.preventDefault();
+    if (!prompt.trim()) return;
 
-    generateImages(prompt)
+    generateImages(prompt);
   }
 
   function handleRegenerateWithSelected() {
-    if (selectedImageIndex === null || !prompt) return
-
-    // In a real app, you would pass the selected image URL or ID to use as a reference
-    generateImages(prompt, images[selectedImageIndex].url)
+    if (selectedImageIndex === null || !prompt) return;
+    generateImages(prompt, images[selectedImageIndex].url);
   }
 
   function handleDownload() {
-    if (selectedImageIndex === null) return
+    if (selectedImageIndex === null) return;
 
-    // In a real app, you would handle the actual download
-    // For this example, we'll just open the image in a new tab
-    window.open(images[selectedImageIndex].url, "_blank")
+    const image = images[selectedImageIndex];
+    const link = document.createElement("a");
+    link.href = image.url;
+    link.download = "generated-image.webp"; // or you can make dynamic name
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   return (
@@ -101,33 +115,40 @@ export function ImageGenerator() {
         </div>
       </form>
 
-      {images.length > 0 && (
+      {(isGenerating || images.length > 0) && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {images.map((image, index) => (
-              <Card
-                key={index}
-                className={cn(
-                  "overflow-hidden cursor-pointer transition-all",
-                  selectedImageIndex === index && "ring-2 ring-primary ring-offset-2",
-                )}
-                onClick={() => setSelectedImageIndex(index)}
-              >
-                <CardContent className="p-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={image.url || "/placeholder.svg"}
-                    alt={image.alt}
-                    className="w-full aspect-square object-cover rounded-sm"
-                  />
-                </CardContent>
-              </Card>
-            ))}
+            {isGenerating
+              ? Array.from({ length: 4 }).map((_, idx) => (
+                  <SkeletonCard key={idx} />
+                ))
+              : images.map((image, index) => (
+                  <Card
+                    key={index}
+                    className={cn(
+                      "overflow-hidden cursor-pointer transition-all",
+                      selectedImageIndex === index &&
+                        "ring-2 ring-primary ring-offset-2"
+                    )}
+                    onClick={() => setSelectedImageIndex(index)}
+                  >
+                    <CardContent className="p-2">
+                      <img
+                        src={image.url || "/placeholder.svg"}
+                        alt={image.alt}
+                        className="w-full aspect-square object-cover rounded-sm transition-opacity duration-300"
+                      />
+                    </CardContent>
+                  </Card>
+                ))}
           </div>
 
-          {selectedImageIndex !== null && (
+          {selectedImageIndex !== null && !isGenerating && (
             <div className="flex flex-wrap gap-4 justify-center">
-              <Button onClick={handleRegenerateWithSelected} disabled={isGenerating}>
+              <Button
+                onClick={handleRegenerateWithSelected}
+                disabled={isGenerating}
+              >
                 {isGenerating ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -146,6 +167,5 @@ export function ImageGenerator() {
         </div>
       )}
     </div>
-  )
+  );
 }
-
